@@ -20,4 +20,32 @@ public class BluetoothClassicPlugin: CAPPlugin, CAPBridgedPlugin {
             "value": implementation.echo(value)
         ])
     }
+
+    @objc func scan(_ call: CAPPluginCall) {
+        call.resolve(["devices": []])
+    }
+
+    @objc func pair(_ call: CAPPluginCall) {
+        call.resolve()
+    }
+
+    @objc func connect(_ call: CAPPluginCall) {
+        call.resolve()
+    }
+
+    @objc func disconnect(_ call: CAPPluginCall) {
+        call.resolve()
+    }
+
+    @objc func read(_ call: CAPPluginCall) {
+        call.resolve(["data": []])
+    }
+
+    @objc func readUntil(_ call: CAPPluginCall) {
+        call.resolve(["data": []])
+    }
+
+    @objc func write(_ call: CAPPluginCall) {
+        call.resolve()
+    }
 }
