@@ -71,3 +71,4 @@ export {
 } from './definitions';
 
 export { theInstance as BluetoothClassic };
+export default theInstance;

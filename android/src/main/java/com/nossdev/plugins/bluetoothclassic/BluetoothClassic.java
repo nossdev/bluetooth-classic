@@ -122,7 +122,7 @@ public class BluetoothClassic {
 
     public CompletableFuture<byte[]> read() {
         CompletableFuture<byte[]> result = new CompletableFuture<>();
-        Thread readThread = new Thread(() -> {
+        new Thread(() -> {
             ByteArrayOutputStream buffer = new ByteArrayOutputStream();
             try {
                 while (true) {
@@ -135,9 +135,8 @@ public class BluetoothClassic {
             } catch (IOException e) {
                 result.completeExceptionally(e);
             }
-        });
+        }).start();
 
-        readThread.start();
         return result;
     }
 
@@ -203,7 +202,6 @@ public class BluetoothClassic {
     }
 
     private void close(Context context) throws IOException {
-        if (receiver != null) context.unregisterReceiver(receiver);
         if (inputStream != null) {
             inputStream.close();
             inputStream = null;

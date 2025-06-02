@@ -1,6 +1,6 @@
 {
   "name": "@nosslabs/bluetooth-classic",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "description": "Simple and straightforward implementation of classic bluetooth communication",
   "main": "dist/plugin.cjs.js",
   "module": "dist/esm/index.js",
@@ -43,7 +43,11 @@
     "build": "npm run clean && npm run docgen && tsc && rollup -c rollup.config.mjs",
     "clean": "rimraf ./dist",
     "watch": "tsc --watch",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "deploy": "npm publish --access public",
+    "deploy:patch": "npm version patch && npm run deploy",
+    "deploy:minor": "npm version minor && npm run deploy",
+    "deploy:major": "npm version major && npm run deploy"
   },
   "devDependencies": {
     "@capacitor/android": "^7.0.0",

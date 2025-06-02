@@ -94,7 +94,7 @@ public class BluetoothClassicPlugin extends Plugin {
 
     @PluginMethod
     public void read(PluginCall call) {
-        CompletedFuture.from(implementation.read().thenApply(bytes -> new JSObject().put("data", toJSArray(bytes))))
+        CompletedFuture.from(implementation.read().thenApply(bytes -> new JSObject().put("data", toJSByteArray(bytes))))
             .onSuccess(call::resolve)
             .onError(e -> call.reject(e.getMessage()))
             .await();
@@ -112,7 +112,7 @@ public class BluetoothClassicPlugin extends Plugin {
         CompletableFuture<byte[]> result = Optional.ofNullable(call.getInt("timeout"))
             .map(timeout -> implementation.readUntil(delimiter, timeout))
             .orElseGet(() -> implementation.readUntil(delimiter));
-        CompletedFuture.from(result.thenApply(bytes -> new JSObject().put("data", bytes)))
+        CompletedFuture.from(result.thenApply(bytes -> new JSObject().put("data", toJSByteArray(bytes))))
             .onSuccess(call::resolve)
             .onError(e -> call.reject(e.getMessage()))
             .await();
@@ -195,7 +195,7 @@ public class BluetoothClassicPlugin extends Plugin {
         return bytes;
     }
 
-    private JSArray toJSArray(byte[] bytes) {
+    private JSArray toJSByteArray(byte[] bytes) {
         JSArray data = new JSArray();
         for (byte theByte : bytes) {
             data.put(((int) theByte) & 0xFF);
