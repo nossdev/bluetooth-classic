@@ -1,5 +1,5 @@
 {
-  "name": "@nossdev/bluetooth-classic",
+  "name": "@nosslabs/bluetooth-classic",
   "version": "0.0.1",
   "description": "Simple and straightforward implementation of classic bluetooth communication",
   "main": "dist/plugin.cjs.js",
