@@ -2,11 +2,11 @@
 import PackageDescription
 
 let package = Package(
-    name: "NossdevBluetoothClassic",
+    name: "NosslabsBluetoothClassic",
     platforms: [.iOS(.v14)],
     products: [
         .library(
-            name: "NossdevBluetoothClassic",
+            name: "NosslabsBluetoothClassic",
             targets: ["BluetoothClassicPlugin"])
     ],
     dependencies: [
