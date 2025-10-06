@@ -1,6 +1,6 @@
 {
   "name": "@nosslabs/bluetooth-classic",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Simple and straightforward implementation of classic bluetooth communication",
   "main": "dist/plugin.cjs.js",
   "module": "dist/esm/index.js",
@@ -13,7 +13,7 @@
     "ios/Sources",
     "ios/Tests",
     "Package.swift",
-    "NossdevBluetoothClassic.podspec"
+    "NosslabsBluetoothClassic.podspec"
   ],
   "author": "yev <josephharveyangeles@gmail.com>",
   "license": "MIT",
@@ -31,7 +31,7 @@
   ],
   "scripts": {
     "verify": "npm run verify:ios && npm run verify:android && npm run verify:web",
-    "verify:ios": "xcodebuild -scheme NossdevBluetoothClassic -destination generic/platform=iOS",
+    "verify:ios": "xcodebuild -scheme NosslabsBluetoothClassic -destination generic/platform=iOS",
     "verify:android": "cd android && ./gradlew clean build test && cd ..",
     "verify:web": "npm run build",
     "lint": "npm run eslint && npm run prettier -- --check && npm run swiftlint -- lint",

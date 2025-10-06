@@ -2,30 +2,99 @@ package com.nossdev.plugins.bluetoothclassic;
 
 import android.Manifest;
 import android.annotation.SuppressLint;
+import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.pm.PackageManager;
 import android.os.Build;
+import android.util.Log;
 import androidx.annotation.RequiresPermission;
+import androidx.core.app.ActivityCompat;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
+import com.getcapacitor.PermissionState;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import com.getcapacitor.annotation.Permission;
+import com.getcapacitor.annotation.PermissionCallback;
 import java.io.IOException;
 import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 @CapacitorPlugin(
     name = "BluetoothClassic",
     permissions = {
-        @Permission(alias = "Bluetooth", strings = { Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT })
+        @Permission(
+            alias = "bluetooth",
+            strings = {
+                Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.ACCESS_FINE_LOCATION
+            }
+        )
     }
 )
 public class BluetoothClassicPlugin extends Plugin {
 
+    private static final Map<Integer, String> BLUETOOTH_STATES = new HashMap<>();
+
+    static {
+        BLUETOOTH_STATES.put(BluetoothAdapter.STATE_ON, "on");
+        BLUETOOTH_STATES.put(BluetoothAdapter.STATE_TURNING_ON, "turning_on");
+        BLUETOOTH_STATES.put(BluetoothAdapter.STATE_OFF, "off");
+        BLUETOOTH_STATES.put(BluetoothAdapter.STATE_TURNING_OFF, "turning_off");
+    }
+
+    private BroadcastReceiver bluetoothReceiver;
+    private boolean isReceiverRegistered;
+
     private final BluetoothClassic implementation = new BluetoothClassic();
+
+    @Override
+    public void load() {
+        super.load();
+        initialize();
+        registerBluetoothStateReceiver();
+    }
+
+    private void initialize() {
+        this.bluetoothReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                final String action = intent.getAction();
+                if (BluetoothAdapter.ACTION_STATE_CHANGED.equals(action)) {
+                    Optional.ofNullable(
+                        BLUETOOTH_STATES.get(intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR))
+                    ).ifPresent(state -> {
+                        JSObject result = new JSObject().put("value", state);
+                        notifyListeners("bluetoothState", result);
+                        notifyListeners(state, result);
+                    });
+                }
+            }
+        };
+    }
+
+    private void registerBluetoothStateReceiver() {
+        if (!isReceiverRegistered) {
+            IntentFilter filter = new IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED);
+            getContext().registerReceiver(bluetoothReceiver, filter);
+            isReceiverRegistered = true;
+        }
+    }
+
+    private void unRegisterBluetoothStateReceiver() {
+        if (isReceiverRegistered) {
+            getContext().unregisterReceiver(bluetoothReceiver);
+            isReceiverRegistered = false;
+        }
+    }
 
     @RequiresPermission(allOf = { Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT })
     @PluginMethod
@@ -37,7 +106,7 @@ public class BluetoothClassicPlugin extends Plugin {
                 .thenApply(devices -> new JSObject().put("devices", toJSArrayDevices(devices)))
         )
             .onSuccess(call::resolve)
-            .onError(error -> call.reject(error.getMessage()))
+            .onError(e -> call.reject(e.getMessage()))
             .await();
     }
 
@@ -94,7 +163,10 @@ public class BluetoothClassicPlugin extends Plugin {
 
     @PluginMethod
     public void read(PluginCall call) {
-        CompletedFuture.from(implementation.read().thenApply(bytes -> new JSObject().put("data", toJSByteArray(bytes))))
+        CompletableFuture<byte[]> result = Optional.ofNullable(call.getInt("timeout"))
+            .map(implementation::read)
+            .orElseGet(implementation::read);
+        CompletedFuture.from(result.thenApply(bytes -> new JSObject().put("data", toJSByteArray(bytes))))
             .onSuccess(call::resolve)
             .onError(e -> call.reject(e.getMessage()))
             .await();
@@ -119,16 +191,58 @@ public class BluetoothClassicPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void isEnabled(PluginCall call) {
+        boolean enabled = implementation.isEnabled();
+        call.resolve(new JSObject().put("enabled", enabled));
+    }
+
+    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
+    @PluginMethod
+    public void enable(PluginCall call) {
+        boolean result = implementation.enable();
+        call.resolve(new JSObject().put("enabled", result));
+    }
+
+    @PluginMethod
     public void disconnect(PluginCall call) {
         try {
             implementation.disconnect(getContext());
-            call.resolve();
-        } catch (IOException ignored) {}
+        } catch (IOException e) {
+            call.reject(e.getMessage());
+            return;
+        }
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void checkPermissions(PluginCall call) {
+        String status;
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            // Android 12+
+            boolean scanGranted =
+                ActivityCompat.checkSelfPermission(getContext(), Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED;
+            boolean connectGranted =
+                ActivityCompat.checkSelfPermission(getContext(), Manifest.permission.BLUETOOTH_CONNECT) ==
+                PackageManager.PERMISSION_GRANTED;
+
+            status = (scanGranted && connectGranted) ? "granted" : "denied";
+        } else {
+            // Android 11 and below
+            boolean locationGranted =
+                ActivityCompat.checkSelfPermission(getContext(), Manifest.permission.ACCESS_FINE_LOCATION) ==
+                PackageManager.PERMISSION_GRANTED;
+
+            status = locationGranted ? "granted" : "denied";
+        }
+
+        call.resolve(new JSObject().put("status", status));
     }
 
     @Override
     protected void handleOnDestroy() {
         try {
+            unRegisterBluetoothStateReceiver();
             implementation.disconnect(getContext());
         } catch (Exception ignored) {}
         super.handleOnDestroy();

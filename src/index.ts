@@ -1,3 +1,4 @@
+import type { PluginListenerHandle } from '@capacitor/core';
 import { registerPlugin } from '@capacitor/core';
 
 import type {
@@ -6,10 +7,14 @@ import type {
   ConnectOptions,
   PairOptions,
   ReadResult,
+  ReadOptions,
   ReadUntilOptions,
   ScanOptions,
   ScanResult,
   WriteOptions,
+  BluetoothStateEvent,
+  BluetoothState,
+  PermissionStatus,
 } from './definitions';
 
 const Plugin = registerPlugin<BluetoothClassicPlugin>('BluetoothClassic', {
@@ -42,16 +47,46 @@ class Instance implements BluetoothClassicInterface {
   }
 
   read(): Promise<ReadResult>;
-  read(options: ReadUntilOptions): Promise<ReadResult>;
-  read(options?: ReadUntilOptions): Promise<ReadResult> {
-    if (options?.delimiter?.length) {
-      return this.plugin.readUntil(options);
+  read(options: ReadOptions): Promise<ReadResult>;
+  read(options?: ReadOptions): Promise<ReadResult> {
+    if (!options) return this.plugin.read();
+    if (Array.isArray((options as ReadUntilOptions).delimiter)) {
+      return this.plugin.readUntil(options as ReadUntilOptions);
     }
-    return this.plugin.read();
+    return this.plugin.read(options);
   }
 
   disconnect(): Promise<void> {
     return this.plugin.disconnect();
+  }
+
+  isEnabled(): Promise<{ enabled: boolean }> {
+    return this.plugin.isEnabled();
+  }
+
+  enable(): Promise<{ enabled: boolean }> {
+    return this.plugin.enable();
+  }
+
+  on(eventName: BluetoothState, listenerFunc: (data: BluetoothStateEvent) => void): Promise<PluginListenerHandle>;
+  on(listenerFunc: (data: BluetoothStateEvent) => void): Promise<PluginListenerHandle>;
+  on(eventName: any, listenerFunc?: any) {
+    if (typeof eventName === 'function') {
+      return this.plugin.addListener('bluetoothState', eventName);
+    }
+    return this.plugin.addListener(eventName, listenerFunc);
+  }
+
+  removeListeners() {
+    return this.plugin.removeAllListeners();
+  }
+
+  checkPermissions(): Promise<PermissionStatus> {
+    return this.plugin.checkPermissions();
+  }
+
+  requestPermissions(): Promise<PermissionStatus> {
+    return this.plugin.requestPermissions();
   }
 }
 
@@ -65,6 +100,7 @@ export {
   ScanResult,
   PairOptions,
   ConnectOptions,
+  ReadOptions,
   ReadUntilOptions,
   ReadResult,
   BluetoothClassicInterface as BluetoothClassicPlugin,
