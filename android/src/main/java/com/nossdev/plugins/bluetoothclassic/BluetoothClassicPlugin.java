@@ -19,9 +19,12 @@ import com.getcapacitor.PermissionState;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
+import com.getcapacitor.PluginResult;
+import com.getcapacitor.annotation.ActivityCallback;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import com.getcapacitor.annotation.Permission;
 import com.getcapacitor.annotation.PermissionCallback;
+import androidx.activity.result.ActivityResult;
 import java.io.IOException;
 import java.util.Collection;
 import java.util.HashMap;
@@ -59,6 +62,7 @@ public class BluetoothClassicPlugin extends Plugin {
     @Override
     public void load() {
         super.load();
+        Logger.info("Plugin loading");
         initialize();
         registerBluetoothStateReceiver();
     }
@@ -72,6 +76,7 @@ public class BluetoothClassicPlugin extends Plugin {
                     Optional.ofNullable(
                         BLUETOOTH_STATES.get(intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR))
                     ).ifPresent(state -> {
+                        Logger.info("Bluetooth state changed: " + state);
                         JSObject result = new JSObject().put("value", state);
                         notifyListeners("bluetoothState", result);
                         notifyListeners(state, result);
@@ -83,6 +88,7 @@ public class BluetoothClassicPlugin extends Plugin {
 
     private void registerBluetoothStateReceiver() {
         if (!isReceiverRegistered) {
+            Logger.debug("Registering Bluetooth state receiver");
             IntentFilter filter = new IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED);
             getContext().registerReceiver(bluetoothReceiver, filter);
             isReceiverRegistered = true;
@@ -91,6 +97,7 @@ public class BluetoothClassicPlugin extends Plugin {
 
     private void unRegisterBluetoothStateReceiver() {
         if (isReceiverRegistered) {
+            Logger.debug("Unregistering Bluetooth state receiver");
             getContext().unregisterReceiver(bluetoothReceiver);
             isReceiverRegistered = false;
         }
@@ -196,11 +203,29 @@ public class BluetoothClassicPlugin extends Plugin {
         call.resolve(new JSObject().put("enabled", enabled));
     }
 
-    @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     @PluginMethod
     public void enable(PluginCall call) {
-        boolean result = implementation.enable();
-        call.resolve(new JSObject().put("enabled", result));
+        Logger.info("Enable Bluetooth requested");
+        if (implementation.isEnabled()) {
+            Logger.debug("Bluetooth already enabled");
+            call.resolve(new JSObject().put("enabled", true));
+            return;
+        }
+
+        // Use Intent to request Bluetooth enable (required for API 33+)
+        Logger.debug("Launching Bluetooth enable intent");
+        Intent enableBtIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
+        startActivityForResult(call, enableBtIntent, "handleEnableResult");
+    }
+
+    @ActivityCallback
+    private void handleEnableResult(PluginCall call, ActivityResult result) {
+        if (call == null) {
+            return;
+        }
+        boolean enabled = implementation.isEnabled();
+        Logger.info("Enable Bluetooth result: " + enabled);
+        call.resolve(new JSObject().put("enabled", enabled));
     }
 
     @PluginMethod
@@ -216,6 +241,7 @@ public class BluetoothClassicPlugin extends Plugin {
 
     @PluginMethod
     public void checkPermissions(PluginCall call) {
+        Logger.debug("Checking Bluetooth permissions");
         String status;
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -236,15 +262,19 @@ public class BluetoothClassicPlugin extends Plugin {
             status = locationGranted ? "granted" : "denied";
         }
 
+        Logger.info("Permission status: " + status);
         call.resolve(new JSObject().put("status", status));
     }
 
     @Override
     protected void handleOnDestroy() {
+        Logger.info("Plugin destroying");
         try {
             unRegisterBluetoothStateReceiver();
             implementation.disconnect(getContext());
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            Logger.error("Error during plugin destruction", e);
+        }
         super.handleOnDestroy();
     }
 
