@@ -1,6 +1,6 @@
 {
   "name": "@nosslabs/bluetooth-classic",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Simple and straightforward implementation of classic bluetooth communication",
   "main": "dist/plugin.cjs.js",
   "module": "dist/esm/index.js",
