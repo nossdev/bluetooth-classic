@@ -49,13 +49,16 @@ public class BluetoothClassic {
 
     @RequiresPermission(allOf = { Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT })
     public CompletableFuture<Collection<BluetoothDevice>> scan(Bridge bridge, Context context, int duration) {
+        Logger.info("Starting Bluetooth scan with duration: " + duration + "ms");
         CompletableFuture<Collection<BluetoothDevice>> result = new CompletableFuture<>();
         adapter = BluetoothAdapter.getDefaultAdapter();
         if (adapter == null) {
+            Logger.error("Bluetooth not supported on this device");
             result.completeExceptionally((new IOException("Bluetooth not supported")));
             return result;
         }
         if (!adapter.isEnabled()) {
+            Logger.warn("Bluetooth is not enabled");
             result.completeExceptionally((new IOException("Bluetooth is not enabled")));
             return result;
         }
@@ -71,6 +74,7 @@ public class BluetoothClassic {
                     if (BluetoothDevice.ACTION_FOUND.equals(action)) {
                         BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
                         if (device != null && device.getAddress() != null) {
+                            Logger.debug("Device found: " + device.getAddress());
                             discoveredDevices.add(device);
                         }
                     }
@@ -90,6 +94,7 @@ public class BluetoothClassic {
                     try {
                         context.unregisterReceiver(receiver);
                     } catch (IllegalArgumentException ignore) {}
+                    Logger.info("Scan completed. Found " + discoveredDevices.size() + " device(s)");
                     result.complete(discoveredDevices);
                 },
                 duration
@@ -99,25 +104,32 @@ public class BluetoothClassic {
 
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     public void pair(String address) throws IOException {
+        Logger.info("Attempting to pair with device: " + address);
         BluetoothAdapter adapter = BluetoothAdapter.getDefaultAdapter();
         if (adapter == null) {
+            Logger.error("Bluetooth adapter not available");
             throw new IOException("Bluetooth adapter not available");
         }
         BluetoothDevice device = adapter.getRemoteDevice(address);
         if (device == null) {
+            Logger.error("Invalid device address: " + address);
             throw new IOException("Invalid device address: " + address);
         }
         if (!device.createBond()) {
+            Logger.error("Bonding sequence not started for: " + address);
             throw new IOException("Bonding sequence not started");
         }
+        Logger.debug("Bonding initiated for device: " + address);
     }
 
     @RequiresPermission(Manifest.permission.BLUETOOTH_CONNECT)
     public void connect(Context context, String address) throws IOException {
+        Logger.info("Connecting to device: " + address);
         synchronized (connectionLock) {
             try {
                 close(context);
             } catch (IOException e) {
+                Logger.error("Failed to close existing connection", e);
                 throw new IOException("Unable to close before establishing a new connection.", e);
             }
 
@@ -126,14 +138,17 @@ public class BluetoothClassic {
             socket.connect();
             inputStream = socket.getInputStream();
             outputStream = socket.getOutputStream();
+            Logger.info("Successfully connected to device: " + address);
         }
     }
 
     public void write(byte[] data) throws IOException {
         synchronized (connectionLock) {
             if (outputStream == null) {
+                Logger.error("Write failed: not connected");
                 throw new IOException("Not connected - outputStream is null");
             }
+            Logger.debug("Writing " + data.length + " bytes");
             outputStream.write(data);
         }
     }
@@ -143,11 +158,13 @@ public class BluetoothClassic {
     }
 
     public CompletableFuture<byte[]> read(int timeout) {
+        Logger.debug("Starting read with timeout: " + timeout + "ms");
         CompletableFuture<byte[]> result = new CompletableFuture<>();
         Thread readThread = new Thread(() -> {
             ByteArrayOutputStream buffer = new ByteArrayOutputStream();
             try {
                 if (inputStream == null) {
+                    Logger.error("Read failed: not connected");
                     result.completeExceptionally(new IOException("Not connected - inputStream is null"));
                     return;
                 }
@@ -158,10 +175,12 @@ public class BluetoothClassic {
                     buffer.write((byte) b);
                 }
                 if (!result.isDone()) {
+                    Logger.debug("Read completed: " + buffer.size() + " bytes");
                     result.complete(buffer.toByteArray());
                 }
             } catch (IOException e) {
                 if (!result.isDone()) {
+                    Logger.error("Read error", e);
                     result.completeExceptionally(e);
                 }
             }
@@ -175,12 +194,14 @@ public class BluetoothClassic {
     }
 
     public CompletableFuture<byte[]> readUntil(byte[] delimiter, int timeout) {
+        Logger.debug("Starting readUntil with delimiter length: " + delimiter.length + ", timeout: " + timeout + "ms");
         CompletableFuture<byte[]> future = new CompletableFuture<>();
         Thread readThread = new Thread(() -> {
             ByteArrayOutputStream buffer = new ByteArrayOutputStream();
             int matchIndex = 0;
             try {
                 if (inputStream == null) {
+                    Logger.error("ReadUntil failed: not connected");
                     future.completeExceptionally(new IOException("Not connected - inputStream is null"));
                     return;
                 }
@@ -196,6 +217,7 @@ public class BluetoothClassic {
                         if (matchIndex == delimiter.length) {
                             // ✅ Delimiter matched
                             if (!future.isDone()) {
+                                Logger.debug("Delimiter matched. Read completed: " + buffer.size() + " bytes");
                                 future.complete(buffer.toByteArray());
                             }
                             return;
@@ -206,10 +228,12 @@ public class BluetoothClassic {
                     }
                 }
                 if (!future.isDone()) {
+                    Logger.debug("ReadUntil completed without delimiter match: " + buffer.size() + " bytes");
                     future.complete(buffer.toByteArray());
                 }
             } catch (IOException e) {
                 if (!future.isDone()) {
+                    Logger.error("ReadUntil error", e);
                     future.completeExceptionally(e);
                 }
             }
@@ -226,6 +250,7 @@ public class BluetoothClassic {
         scheduler.schedule(
             () -> {
                 if (!future.isDone()) {
+                    Logger.warn("Operation timed out after " + timeout + "ms");
                     future.completeExceptionally(new TimeoutException("Timed out after " + timeout + " ms"));
                     thread.interrupt();
                 }
@@ -253,6 +278,7 @@ public class BluetoothClassic {
     }
 
     public void disconnect(Context context) throws IOException {
+        Logger.info("Disconnecting");
         close(context);
     }
 
@@ -272,6 +298,7 @@ public class BluetoothClassic {
                 }
                 socket = null;
             }
+            Logger.debug("Connection closed");
         }
     }
 }
