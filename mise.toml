@@ -1,3 +1,77 @@
 [tools]
 node = "20.19.2"
 java = "temurin-21.0.3"
+
+[tasks.publish]
+description = "Tag and push a release: mise run publish <semver>"
+run = '''
+#!/bin/bash
+set -e
+
+REPO="nossdev/bluetooth-classic"
+KEEP=5
+
+VERSION="${1:?Version argument required (e.g., mise run publish 1.2.0)}"
+
+# Validate semver format
+if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+  echo "Error: Invalid semver format: $VERSION"
+  exit 1
+fi
+
+# Must release from main
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+if [ "$BRANCH" != "main" ]; then
+  echo "Error: Releases must be from main (currently on $BRANCH)"
+  exit 1
+fi
+
+# Working tree must be clean
+if [ -n "$(git status --porcelain)" ]; then
+  echo "Error: Working tree is dirty. Commit or stash changes first."
+  exit 1
+fi
+
+# Check remote first - can't re-release if already pushed
+if git ls-remote --tags origin | grep -q "refs/tags/v$VERSION$"; then
+  echo "Error: Tag v$VERSION already exists on remote"
+  exit 1
+fi
+
+# --- Cleanup old GitHub Releases to keep things tidy ---
+if ! command -v gh &>/dev/null; then
+  echo "Warning: gh CLI not found, skipping release cleanup"
+elif ! gh auth status &>/dev/null; then
+  echo "Warning: gh not authenticated, skipping release cleanup"
+  echo "  Run: gh auth login"
+else
+  OLD_RELEASE_IDS=$(gh api "/repos/$REPO/releases" --paginate --jq ".[$KEEP:] | .[].id" 2>/dev/null || true)
+  if [ -n "$OLD_RELEASE_IDS" ]; then
+    echo "Cleaning old releases (keeping last $KEEP)..."
+    echo "$OLD_RELEASE_IDS" | while read -r id; do
+      tag=$(gh api "/repos/$REPO/releases/$id" --jq '.tag_name' 2>/dev/null)
+      if gh api -X DELETE "/repos/$REPO/releases/$id" &>/dev/null; then
+        echo "  Deleted release: $tag"
+      fi
+    done
+  fi
+fi
+
+# Delete local tag if exists (safe since remote doesn't have it)
+if git tag -l "v$VERSION" | grep -qx "v$VERSION"; then
+  echo "Tag v$VERSION exists locally, deleting..."
+  git tag -d "v$VERSION"
+fi
+
+echo "Releasing version $VERSION..."
+
+npm pkg set version="$VERSION"
+git add package.json
+git commit -m "chore(release): v$VERSION"
+git tag "v$VERSION"
+
+# Push branch and tag together (avoids race condition)
+git push origin HEAD "v$VERSION"
+
+echo "Done! v$VERSION has been queued for release."
+'''

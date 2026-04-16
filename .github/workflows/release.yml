@@ -1,0 +1,61 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      - run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Publish to npm
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Create GitHub Release
+        id: create_release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+
+      - name: Notify Discord
+        run: |
+          curl -H "Content-Type: application/json" \
+               -X POST \
+               -d "$(cat <<'EOF'
+          {
+            "embeds": [{
+              "title": "Bluetooth Classic Release",
+              "description": "📦 **Package:** `@nosslabs/bluetooth-classic`\n🏷️ **Version:** `${{ github.ref_name }}`\n🔗 **Release:** ${{ steps.create_release.outputs.html_url }}\n\nThe package has been published to npm! - <:kyui:1046963049677996074>",
+              "color": 3447003,
+              "footer": {
+                "text": "${{ github.actor }} • ${{ github.sha }}",
+                "icon_url": "https://github.com/${{ github.actor }}.png"
+              },
+              "fields": [{
+                "name": "Commit",
+                "value": "[${{ github.sha }}](https://github.com/${{ github.repository }}/commit/${{ github.sha }})",
+                "inline": true
+              }]
+            }]
+          }
+          EOF
+          )" \
+               ${{ secrets.NOSSDEV_KYUI_WEBHOOK }}

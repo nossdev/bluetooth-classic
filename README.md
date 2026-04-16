@@ -1,3 +1,5 @@
+[![CI](https://github.com/nossdev/bluetooth-classic/actions/workflows/ci.yml/badge.svg)](https://github.com/nossdev/bluetooth-classic/actions/workflows/ci.yml)
+
 # @nossdev/bluetooth-classic
 
 Simple and straightforward implementation of classic bluetooth communication
