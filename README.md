@@ -1,4 +1,5 @@
 [![CI](https://github.com/nossdev/bluetooth-classic/actions/workflows/ci.yml/badge.svg)](https://github.com/nossdev/bluetooth-classic/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/@nosslabs/bluetooth-classic)](https://www.npmjs.com/package/@nosslabs/bluetooth-classic)
 
 # @nossdev/bluetooth-classic
 
