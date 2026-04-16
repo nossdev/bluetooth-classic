@@ -26,13 +26,17 @@ public class BluetoothClassicPlugin: CAPPlugin, CAPBridgedPlugin, CBCentralManag
         CAPPluginMethod(name: "checkPermissions", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "requestPermissions", returnType: CAPPluginReturnPromise)
     ]
-    private let implementation = BluetoothClassic()
     private var centralManager: CBCentralManager?
 
-    public override func load() {
-        // Initialize CBCentralManager to monitor Bluetooth state
-        // Using background queue to avoid blocking
-        centralManager = CBCentralManager(delegate: self, queue: DispatchQueue.global(qos: .background))
+    /// Creates CBCentralManager lazily on first use to avoid triggering
+    /// the iOS Bluetooth permission/power dialogs at app startup.
+    private func ensureCentralManager(showPowerAlert: Bool = false) {
+        guard centralManager == nil else { return }
+        centralManager = CBCentralManager(
+            delegate: self,
+            queue: DispatchQueue.global(qos: .background),
+            options: [CBCentralManagerOptionShowPowerAlertKey: showPowerAlert]
+        )
     }
 
     @objc func scan(_ call: CAPPluginCall) {
@@ -59,47 +63,51 @@ public class BluetoothClassicPlugin: CAPPlugin, CAPBridgedPlugin, CBCentralManag
         call.reject("Classic Bluetooth is not supported on iOS")
     }
 
-    @objc func isEnabled(_ call: CAPPluginCall) {
-        guard let manager = centralManager else {
-            call.reject("Bluetooth manager not initialized")
-            return
-        }
+    @objc override public func addListener(_ call: CAPPluginCall) {
+        ensureCentralManager()
+        super.addListener(call)
+    }
 
-        let enabled = manager.state == .poweredOn
+    @objc func isEnabled(_ call: CAPPluginCall) {
+        ensureCentralManager()
+        let enabled = centralManager?.state == .poweredOn
         call.resolve(["enabled": enabled])
     }
 
     @objc func enable(_ call: CAPPluginCall) {
-        // iOS does not allow apps to programmatically enable Bluetooth
-        // However, we can trigger the system alert by checking the state
-        // This will prompt the user to enable Bluetooth if it's off
-        guard let manager = centralManager else {
-            call.reject("Bluetooth manager not initialized")
+        // If Bluetooth is already on, no alert needed.
+        if let manager = centralManager, manager.state == .poweredOn {
+            call.resolve(["enabled": true])
             return
         }
 
-        let enabled = manager.state == .poweredOn
+        // iOS does not allow apps to programmatically enable Bluetooth.
+        // Recreate CBCentralManager with showPowerAlert: true so the system
+        // "Turn On Bluetooth" dialog appears when Bluetooth is off.
+        centralManager?.delegate = nil
+        centralManager = nil
+        centralManager = CBCentralManager(
+            delegate: self,
+            queue: DispatchQueue.global(qos: .background),
+            options: [CBCentralManagerOptionShowPowerAlertKey: true]
+        )
 
-        if !enabled {
-            // Accessing the state when Bluetooth is off triggers iOS system alert
-            // The alert asks user to enable Bluetooth in Settings
-            _ = manager.state
-        }
-
-        call.resolve(["enabled": enabled])
+        // Freshly created manager starts in .unknown state;
+        // the actual state arrives via centralManagerDidUpdateState.
+        call.resolve(["enabled": false])
     }
 
     @objc func disconnect(_ call: CAPPluginCall) {
         call.reject("Classic Bluetooth is not supported on iOS")
     }
 
-    @objc public override func checkPermissions(_ call: CAPPluginCall) {
+    @objc override public func checkPermissions(_ call: CAPPluginCall) {
         // Classic Bluetooth doesn't need permissions on iOS
         // Always return granted since it's not supported anyway
         call.resolve(["status": "granted"])
     }
 
-    @objc public override func requestPermissions(_ call: CAPPluginCall) {
+    @objc override public func requestPermissions(_ call: CAPPluginCall) {
         // Classic Bluetooth doesn't need permissions on iOS
         // Always return granted since it's not supported anyway
         call.resolve(["status": "granted"])
@@ -108,6 +116,9 @@ public class BluetoothClassicPlugin: CAPPlugin, CAPBridgedPlugin, CBCentralManag
     // MARK: - CBCentralManagerDelegate
 
     public func centralManagerDidUpdateState(_ central: CBCentralManager) {
+        // Ignore callbacks from a stale manager instance (e.g. after enable() recreates it).
+        guard central === centralManager else { return }
+
         var state: String
 
         switch central.state {
@@ -128,7 +139,4 @@ public class BluetoothClassicPlugin: CAPPlugin, CAPBridgedPlugin, CBCentralManag
         notifyListeners(state, data: ["value": state])
     }
 
-    deinit {
-        centralManager = nil
-    }
 }
